@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title> Nexus AI </title>
+    <title>ChatGPT | Nexus Edition</title>
 
     <!-- Tailwind CSS & Icons -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -229,7 +229,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        model: "llama3-8b-8192",
+                        model: "openai/gpt-oss-20b",
                         messages: [SYSTEM_PROMPT, ...chatHistory.slice(0, -1)],
                         stream: true
                     })
