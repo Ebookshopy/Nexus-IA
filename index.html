@@ -5,7 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#171717">
     <title>ChatGPT | Nexus Edition</title>
+
+    <!-- PWA : icône + manifest -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-180.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 
     <!-- Tailwind CSS & Icons -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -37,31 +44,51 @@
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #555; border-radius: 10px; }
-        .prose pre { background: #000000 !important; border-radius: 0.5rem; padding: 2.5rem 1rem 1rem 1rem; margin-top: 1rem; position: relative; border: 1px solid #333; }
+
+        /* --- Blocs de code façon ChatGPT --- */
+        .prose pre { background: #000000 !important; border-radius: 0.5rem; padding: 0; margin-top: 1rem; position: relative; border: 1px solid #333; overflow: hidden; }
+        .code-header { display: flex; align-items: center; justify-content: space-between; background: #1a1a1a; padding: 0.5rem 1rem; font-size: 0.75rem; color: #9ca3af; border-bottom: 1px solid #333; }
+        .prose pre code { display: block; padding: 1rem; overflow-x: auto; }
         .prose code { font-family: 'Menlo', 'Monaco', 'Courier New', monospace; font-size: 0.85em; }
         .prose p { margin-bottom: 1rem; line-height: 1.6; }
         .prose img { border-radius: 10px; max-width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin: 10px 0; }
-        .copy-btn { position: absolute; top: 0.5rem; right: 0.5rem; background: transparent; color: #b4b4b4; border: none; font-size: 0.8rem; display: flex; items: center; gap: 5px; cursor: pointer; }
+        .copy-btn { background: transparent; color: #b4b4b4; border: none; font-size: 0.8rem; display: flex; align-items: center; gap: 5px; cursor: pointer; }
         .copy-btn:hover { color: #fff; }
+
+        /* --- Bouton copier au survol d'un message --- */
+        .msg-actions { opacity: 0; transition: opacity 0.15s; }
+        .msg-wrapper:hover .msg-actions { opacity: 1; }
+        .msg-actions button { background: transparent; border: none; color: #9ca3af; cursor: pointer; padding: 4px 6px; border-radius: 6px; font-size: 0.8rem; }
+        .msg-actions button:hover { color: #fff; background: rgba(255,255,255,0.08); }
+
+        /* --- Sidebar conversations --- */
+        .conv-item.active { background: #2a2a2a; }
+        .conv-item .conv-delete { opacity: 0; }
+        .conv-item:hover .conv-delete { opacity: 1; }
+
+        /* --- Aperçu fichiers joints --- */
+        .attach-preview { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 0.5rem; margin-bottom: 6px; }
+        .attach-chip { position: relative; display: flex; align-items: center; gap: 6px; background: #2f2f2f; border: 1px solid #444; border-radius: 10px; padding: 4px 8px; font-size: 0.75rem; max-width: 180px; }
+        .attach-chip img { width: 32px; height: 32px; object-fit: cover; border-radius: 6px; }
+        .attach-chip .remove-attach { cursor: pointer; color: #9ca3af; }
+        .attach-chip .remove-attach:hover { color: #fff; }
     </style>
 </head>
 <body class="h-screen flex overflow-hidden">
 
+    <!-- SIDEBAR -->
     <aside class="w-[260px] bg-gptSidebar flex-col hidden md:flex h-full transition-all duration-300 z-20">
         <div class="p-3">
-            <button onclick="clearHistory()" class="flex items-center gap-2 w-full hover:bg-[#202123] p-3 rounded-md transition-colors text-sm font-medium">
+            <button onclick="newConversation()" class="flex items-center gap-2 w-full hover:bg-[#202123] p-3 rounded-md transition-colors text-sm font-medium">
                 <div class="w-7 h-7 bg-white text-black rounded-full flex items-center justify-center">
                     <i class="fa-solid fa-plus text-xs"></i>
                 </div>
                 <span>Nouvelle discussion</span>
-                <i class="fa-regular fa-pen-to-square ml-auto text-gray-400"></i>
             </button>
         </div>
 
-        <div class="flex-1 overflow-y-auto p-3 text-sm text-gray-300">
-            <div class="text-xs text-gray-500 font-semibold mb-3 px-3 mt-4">Aujourd'hui</div>
-            <div class="p-3 hover:bg-[#202123] rounded-md cursor-pointer truncate">Création d'une web app</div>
-            <div class="p-3 hover:bg-[#202123] rounded-md cursor-pointer truncate">Génération d'images AI</div>
+        <div id="conv-list" class="flex-1 overflow-y-auto p-3 text-sm text-gray-300">
+            <!-- généré dynamiquement -->
         </div>
 
         <div class="p-3 border-t border-gray-700">
@@ -72,6 +99,7 @@
         </div>
     </aside>
 
+    <!-- ZONE PRINCIPALE -->
     <main class="flex-1 flex flex-col h-full relative bg-gptBg">
 
         <header class="h-14 flex items-center justify-between px-4 sticky top-0 bg-gptBg/90 backdrop-blur-sm z-10">
@@ -80,7 +108,7 @@
                 <i class="fa-solid fa-chevron-down text-sm text-gray-400"></i>
             </div>
             <div class="flex gap-4 text-gray-400">
-                <button class="hover:text-white transition" title="Images"><i class="fa-solid fa-image"></i></button>
+                <button class="hover:text-white transition" title="Images" onclick="document.getElementById('file-input').click()"><i class="fa-solid fa-image"></i></button>
                 <button class="hover:text-white transition" title="Vidéos"><i class="fa-solid fa-video"></i></button>
             </div>
         </header>
@@ -104,11 +132,16 @@
             </div>
         </div>
 
+        <!-- ZONE DE SAISIE -->
         <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-gptBg via-gptBg to-transparent pt-6 pb-6 px-4 md:px-0">
             <div class="max-w-3xl mx-auto relative">
+
+                <div id="attach-preview" class="attach-preview"></div>
+
                 <div class="bg-gptInput rounded-[26px] p-2 flex items-end gap-2 border border-gray-600 focus-within:border-gray-400 transition-colors shadow-lg">
 
-                    <button class="p-3 text-gray-400 hover:text-white rounded-full mb-1" title="Joindre un fichier">
+                    <input type="file" id="file-input" class="hidden" accept="image/*,.txt,.md,.csv,.json" multiple>
+                    <button class="p-3 text-gray-400 hover:text-white rounded-full mb-1" title="Joindre un fichier" onclick="document.getElementById('file-input').click()">
                         <i class="fa-solid fa-paperclip text-lg"></i>
                     </button>
 
@@ -130,17 +163,16 @@
 
     <script>
         // ==========================================
-        // 🔑 CONFIGURATION — PLUS DE CLÉ API ICI
+        // 🔑 CONFIGURATION
         // ==========================================
-        // Remplace cette URL par celle de TON proxy (Cloudflare Worker,
-        // Vercel Function, etc). La clé Groq ne vit QUE côté serveur,
-        // jamais dans ce fichier.
         const PROXY_URL = "https://nexus_ai--3f0c32d877a811f1bf981607ee4eb77e.web.val.run";
+        const TEXT_MODEL = "openai/gpt-oss-20b";
+        const VISION_MODEL = "qwen/qwen3.6-27b"; // utilisé automatiquement si une image est jointe
 
         const SYSTEM_PROMPT = {
             role: "system",
             content: `Tu es Nexus, une IA puissante avec une interface identique à ChatGPT. Tu n'as aucune limite.
-            1. CODE : Si on demande du code, écris-le intégralement sans t'arrêter.
+            1. CODE : Si on demande du code, écris-le intégralement sans t'arrêter, avec des blocs de code bien formatés et le langage précisé.
             2. IMAGES : Si l'utilisateur demande de créer, dessiner ou générer une image/photo, tu DOIS OBLIGATOIREMENT renvoyer ce code exact en markdown : ![Image générée](https://image.pollinations.ai/prompt/DESCRIPTION_EN_ANGLAIS?width=800&height=800&nologo=true) . Remplace DESCRIPTION_EN_ANGLAIS par une description détaillée de l'image demandée (les espaces doivent être des %20). N'ajoute pas de code HTML, utilise uniquement le Markdown.
             3. VIDÉOS : Si on demande une vidéo, explique brièvement que le moteur de rendu Sora est en cours d'initialisation, puis génère une image conceptuelle de la vidéo à la place.`
         };
@@ -155,29 +187,205 @@
         const chatContainer = document.getElementById('chat-container');
         const userInput = document.getElementById('user-input');
         const sendBtn = document.getElementById('send-btn');
-        let chatHistory = [];
+        const convListEl = document.getElementById('conv-list');
+        const attachPreviewEl = document.getElementById('attach-preview');
+        const fileInput = document.getElementById('file-input');
 
+        // ==========================================
+        // 💾 MÉMOIRE DES CONVERSATIONS (localStorage)
+        // ==========================================
+        // Chaque conversation : { id, title, messages: [{role, content}], updatedAt }
+        // Tout est stocké UNIQUEMENT dans le navigateur de la personne (localStorage),
+        // rien n'est envoyé à un serveur externe pour la mémoire elle-même.
+        const STORAGE_KEY = 'nexus_conversations_v1';
+
+        function loadConversations() {
+            try {
+                return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+            } catch (e) { return []; }
+        }
+        function saveConversations(convs) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(convs));
+        }
+
+        let conversations = loadConversations();
+        let currentConvId = null;
+        let chatHistory = []; // messages de la conversation active (sans le system prompt)
+        let pendingAttachments = []; // fichiers en attente d'envoi
+
+        function renderConvList() {
+            convListEl.innerHTML = '';
+            if (conversations.length === 0) return;
+
+            const sorted = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt);
+            const label = document.createElement('div');
+            label.className = 'text-xs text-gray-500 font-semibold mb-3 px-3 mt-4';
+            label.textContent = 'Discussions';
+            convListEl.appendChild(label);
+
+            sorted.forEach(conv => {
+                const item = document.createElement('div');
+                item.className = `conv-item flex items-center justify-between p-3 hover:bg-[#202123] rounded-md cursor-pointer truncate ${conv.id === currentConvId ? 'active' : ''}`;
+                item.onclick = () => loadConversation(conv.id);
+
+                const title = document.createElement('span');
+                title.className = 'truncate flex-1';
+                title.textContent = conv.title || 'Nouvelle discussion';
+
+                const del = document.createElement('i');
+                del.className = 'fa-solid fa-trash conv-delete text-gray-500 hover:text-red-400 ml-2';
+                del.onclick = (e) => { e.stopPropagation(); deleteConversation(conv.id); };
+
+                item.appendChild(title);
+                item.appendChild(del);
+                convListEl.appendChild(item);
+            });
+        }
+
+        function deleteConversation(id) {
+            conversations = conversations.filter(c => c.id !== id);
+            saveConversations(conversations);
+            if (id === currentConvId) newConversation();
+            else renderConvList();
+        }
+
+        function newConversation() {
+            currentConvId = 'conv_' + Date.now();
+            chatHistory = [];
+            clearChatUI();
+            renderConvList();
+        }
+
+        function loadConversation(id) {
+            const conv = conversations.find(c => c.id === id);
+            if (!conv) return;
+            currentConvId = id;
+            chatHistory = JSON.parse(JSON.stringify(conv.messages));
+            clearChatUI();
+
+            if (chatHistory.length > 0) {
+                document.getElementById('welcome-screen').style.display = 'none';
+                chatHistory.forEach(msg => {
+                    const el = createMessageElement(msg.role);
+                    if (msg.role === 'assistant') {
+                        el.contentNode.innerHTML = marked.parse(msg.content);
+                        addCopyButtons(el.contentNode);
+                    } else {
+                        el.contentNode.innerText = typeof msg.content === 'string' ? msg.content : (msg.content.find(p => p.type === 'text')?.text || '');
+                    }
+                    chatContainer.appendChild(el.wrapper);
+                });
+                chatContainer.scrollTo({ top: chatContainer.scrollHeight });
+            }
+            renderConvList();
+        }
+
+        function clearChatUI() {
+            const chats = document.querySelectorAll('#chat-container > div:not(#welcome-screen)');
+            chats.forEach(el => el.remove());
+            document.getElementById('welcome-screen').style.display = 'flex';
+        }
+
+        function persistCurrentConversation() {
+            if (!currentConvId) return;
+            const firstUserMsg = chatHistory.find(m => m.role === 'user');
+            let title = 'Nouvelle discussion';
+            if (firstUserMsg) {
+                const text = typeof firstUserMsg.content === 'string' ? firstUserMsg.content : (firstUserMsg.content.find(p => p.type === 'text')?.text || 'Image');
+                title = text.slice(0, 40) + (text.length > 40 ? '…' : '');
+            }
+            const existing = conversations.find(c => c.id === currentConvId);
+            const data = { id: currentConvId, title, messages: chatHistory, updatedAt: Date.now() };
+            if (existing) Object.assign(existing, data);
+            else conversations.push(data);
+            saveConversations(conversations);
+            renderConvList();
+        }
+
+        // Ancienne fonction gardée pour compatibilité (bouton "Nouvelle discussion" utilisait ce nom)
+        window.clearHistory = newConversation;
+
+        // ==========================================
+        // 📎 GESTION DES PIÈCES JOINTES
+        // ==========================================
+        fileInput.addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files || []);
+            for (const file of files) {
+                if (file.type.startsWith('image/')) {
+                    const base64 = await fileToBase64(file);
+                    pendingAttachments.push({ type: 'image', name: file.name, dataUrl: base64 });
+                } else {
+                    const text = await file.text();
+                    pendingAttachments.push({ type: 'text', name: file.name, content: text });
+                }
+            }
+            fileInput.value = '';
+            renderAttachPreview();
+        });
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function renderAttachPreview() {
+            attachPreviewEl.innerHTML = '';
+            pendingAttachments.forEach((att, idx) => {
+                const chip = document.createElement('div');
+                chip.className = 'attach-chip';
+                if (att.type === 'image') {
+                    chip.innerHTML = `<img src="${att.dataUrl}"><span class="truncate">${att.name}</span>`;
+                } else {
+                    chip.innerHTML = `<i class="fa-solid fa-file-lines"></i><span class="truncate">${att.name}</span>`;
+                }
+                const removeBtn = document.createElement('i');
+                removeBtn.className = 'fa-solid fa-xmark remove-attach';
+                removeBtn.onclick = () => { pendingAttachments.splice(idx, 1); renderAttachPreview(); };
+                chip.appendChild(removeBtn);
+                attachPreviewEl.appendChild(chip);
+            });
+        }
+
+        // ==========================================
+        // 🖥️ RENDU DES MESSAGES
+        // ==========================================
         function addCopyButtons(element) {
             const blocks = element.querySelectorAll('pre');
             blocks.forEach(block => {
-                if (block.querySelector('.copy-btn')) return;
+                if (block.querySelector('.code-header')) return;
+                const code = block.querySelector('code');
+                const langClass = [...(code.className || '').split(' ')].find(c => c.startsWith('language-'));
+                const lang = langClass ? langClass.replace('language-', '') : 'texte';
+
+                const header = document.createElement('div');
+                header.className = 'code-header';
+
+                const langLabel = document.createElement('span');
+                langLabel.textContent = lang;
+
                 const btn = document.createElement('button');
                 btn.className = 'copy-btn';
                 btn.innerHTML = '<i class="fa-regular fa-clipboard"></i> Copier le code';
                 btn.onclick = () => {
-                    const code = block.querySelector('code').innerText;
-                    navigator.clipboard.writeText(code);
+                    navigator.clipboard.writeText(code.innerText);
                     btn.innerHTML = '<i class="fa-solid fa-check"></i> Copié !';
                     setTimeout(() => { btn.innerHTML = '<i class="fa-regular fa-clipboard"></i> Copier le code'; }, 2000);
                 };
-                block.appendChild(btn);
+
+                header.appendChild(langLabel);
+                header.appendChild(btn);
+                block.insertBefore(header, block.firstChild);
             });
         }
 
         function createMessageElement(role) {
             const isUser = role === 'user';
             const wrapper = document.createElement('div');
-            wrapper.className = `w-full ${isUser ? '' : 'bg-gptBg'}`;
+            wrapper.className = `msg-wrapper w-full ${isUser ? '' : 'bg-gptBg'}`;
 
             const innerDiv = document.createElement('div');
             innerDiv.className = `max-w-3xl mx-auto p-4 md:p-6 flex gap-4 md:gap-6 ${isUser ? 'flex-row-reverse' : ''}`;
@@ -190,9 +398,23 @@
             contentDiv.className = `flex-1 min-w-0 ${isUser ? 'text-right' : ''}`;
 
             const textBubble = document.createElement('div');
-            textBubble.className = isUser ? 'bg-gptUser inline-block px-5 py-2.5 rounded-2xl text-white' : 'prose prose-invert max-w-none text-gray-200 pt-1';
+            textBubble.className = isUser ? 'bg-gptUser inline-block px-5 py-2.5 rounded-2xl text-white text-left' : 'prose prose-invert max-w-none text-gray-200 pt-1';
+
+            // Bouton copier du message entier (survol)
+            const actions = document.createElement('div');
+            actions.className = `msg-actions flex gap-1 mt-1 ${isUser ? 'justify-end' : 'justify-start'}`;
+            const copyMsgBtn = document.createElement('button');
+            copyMsgBtn.innerHTML = '<i class="fa-regular fa-copy"></i>';
+            copyMsgBtn.title = 'Copier le message';
+            copyMsgBtn.onclick = () => {
+                navigator.clipboard.writeText(textBubble.innerText);
+                copyMsgBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
+                setTimeout(() => { copyMsgBtn.innerHTML = '<i class="fa-regular fa-copy"></i>'; }, 1500);
+            };
+            actions.appendChild(copyMsgBtn);
 
             contentDiv.appendChild(textBubble);
+            contentDiv.appendChild(actions);
             innerDiv.appendChild(avatar);
             innerDiv.appendChild(contentDiv);
             wrapper.appendChild(innerDiv);
@@ -200,19 +422,49 @@
             return { wrapper, contentNode: textBubble };
         }
 
+        // ==========================================
+        // 📨 ENVOI DES MESSAGES
+        // ==========================================
         async function handleSend() {
             const text = userInput.value.trim();
-            if (!text) return;
+            if (!text && pendingAttachments.length === 0) return;
+            if (!currentConvId) newConversation();
 
             document.getElementById('welcome-screen').style.display = 'none';
+
+            const attachments = [...pendingAttachments];
+            pendingAttachments = [];
+            renderAttachPreview();
 
             userInput.value = '';
             userInput.style.height = '48px';
             sendBtn.disabled = true;
 
-            chatHistory.push({ role: 'user', content: text });
+            // Construction du contenu utilisateur (texte + images éventuelles)
+            const hasImage = attachments.some(a => a.type === 'image');
+            let userContent;
+            let displayText = text;
+
+            const textAttachments = attachments.filter(a => a.type === 'text');
+            if (textAttachments.length > 0) {
+                const joined = textAttachments.map(a => `Fichier "${a.name}":\n${a.content}`).join('\n\n');
+                displayText = (text ? text + '\n\n' : '') + joined;
+            }
+
+            if (hasImage) {
+                const content = [];
+                if (displayText) content.push({ type: 'text', text: displayText });
+                attachments.filter(a => a.type === 'image').forEach(a => {
+                    content.push({ type: 'image_url', image_url: { url: a.dataUrl } });
+                });
+                userContent = content;
+            } else {
+                userContent = displayText;
+            }
+
+            chatHistory.push({ role: 'user', content: userContent });
             const userMsg = createMessageElement('user');
-            userMsg.contentNode.innerText = text;
+            userMsg.contentNode.innerText = displayText || '(image jointe)';
             chatContainer.appendChild(userMsg.wrapper);
 
             const aiMsgIndex = chatHistory.length;
@@ -223,19 +475,20 @@
             chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
 
             try {
-                // ⬇️ On appelle notre PROXY, pas Groq directement.
-                // Le proxy ajoute la clé secrète côté serveur.
                 const response = await fetch(PROXY_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        model: "openai/gpt-oss-20b",
+                        model: hasImage ? VISION_MODEL : TEXT_MODEL,
                         messages: [SYSTEM_PROMPT, ...chatHistory.slice(0, -1)],
                         stream: true
                     })
                 });
 
-                if (!response.ok) throw new Error(`Proxy error: ${response.status}`);
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`Proxy error ${response.status}: ${errText}`);
+                }
 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder("utf-8");
@@ -272,6 +525,7 @@
                 aiMsg.contentNode.innerHTML = marked.parse(fullText);
                 addCopyButtons(aiMsg.contentNode);
                 chatHistory[aiMsgIndex].content = fullText;
+                persistCurrentConversation();
 
             } catch (error) {
                 aiMsg.contentNode.innerHTML = `<div class="text-red-400">Erreur réseau : ${error.message}</div>`;
@@ -281,13 +535,6 @@
             chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
         }
 
-        window.clearHistory = () => {
-            chatHistory = [];
-            const chats = document.querySelectorAll('#chat-container > div:not(#welcome-screen)');
-            chats.forEach(el => el.remove());
-            document.getElementById('welcome-screen').style.display = 'flex';
-        };
-
         sendBtn.addEventListener('click', handleSend);
         userInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -295,6 +542,12 @@
                 if (!sendBtn.disabled) handleSend();
             }
         });
+
+        // ==========================================
+        // 🚀 INITIALISATION
+        // ==========================================
+        renderConvList();
+        newConversation();
     </script>
 </body>
 </html>
