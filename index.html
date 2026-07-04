@@ -6,7 +6,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#171717">
-    <title> Nexus AI </title>
+    <title>ChatGPT | Nexus Edition</title>
 
     <!-- PWA : icône + manifest -->
     <link rel="manifest" href="manifest.json">
@@ -163,11 +163,18 @@
 
     <script>
         // ==========================================
-        // 🔑 CONFIGURATION
+        // 🔑 CONFIGURATION MULTI-IA
         // ==========================================
         const PROXY_URL = "https://nexus_ai--3f0c32d877a811f1bf981607ee4eb77e.web.val.run";
-        const TEXT_MODEL = "openai/gpt-oss-20b";
-        const VISION_MODEL = "qwen/qwen3.6-27b"; // utilisé automatiquement si une image est jointe
+        const VISION_MODEL = "qwen/qwen3.6-27b"; 
+
+        // Pool d'IA gratuites de secours (si la première sature, on passe à la suivante)
+        const TEXT_MODELS_POOL = [
+            "openai/gpt-oss-20b",              // Modèle 1 (Actuel)
+            "meta-llama/llama-3-70b-instruct",  // Modèle 2 (Gros quotas, excellent)
+            "mistralai/mixtral-8x7b-instruct",  // Modèle 3 (Très rapide et français)
+            "google/gemma-2-27b-it"            // Modèle 4 (De secours)
+        ];
 
         const SYSTEM_PROMPT = {
             role: "system",
@@ -192,11 +199,8 @@
         const fileInput = document.getElementById('file-input');
 
         // ==========================================
-        // 💾 MÉMOIRE DES CONVERSATIONS (localStorage)
+        // 💾 MÉMOIRE DES CONVERSATIONS
         // ==========================================
-        // Chaque conversation : { id, title, messages: [{role, content}], updatedAt }
-        // Tout est stocké UNIQUEMENT dans le navigateur de la personne (localStorage),
-        // rien n'est envoyé à un serveur externe pour la mémoire elle-même.
         const STORAGE_KEY = 'nexus_conversations_v1';
 
         function loadConversations() {
@@ -210,8 +214,8 @@
 
         let conversations = loadConversations();
         let currentConvId = null;
-        let chatHistory = []; // messages de la conversation active (sans le system prompt)
-        let pendingAttachments = []; // fichiers en attente d'envoi
+        let chatHistory = []; 
+        let pendingAttachments = []; 
 
         function renderConvList() {
             convListEl.innerHTML = '';
@@ -302,7 +306,6 @@
             renderConvList();
         }
 
-        // Ancienne fonction gardée pour compatibilité (bouton "Nouvelle discussion" utilisait ce nom)
         window.clearHistory = newConversation;
 
         // ==========================================
@@ -400,7 +403,6 @@
             const textBubble = document.createElement('div');
             textBubble.className = isUser ? 'bg-gptUser inline-block px-5 py-2.5 rounded-2xl text-white text-left' : 'prose prose-invert max-w-none text-gray-200 pt-1';
 
-            // Bouton copier du message entier (survol)
             const actions = document.createElement('div');
             actions.className = `msg-actions flex gap-1 mt-1 ${isUser ? 'justify-end' : 'justify-start'}`;
             const copyMsgBtn = document.createElement('button');
@@ -423,7 +425,7 @@
         }
 
         // ==========================================
-        // 📨 ENVOI DES MESSAGES
+        // 📨 ENVOI DES MESSAGES (AVEC SYSTEME DE SECOURS)
         // ==========================================
         async function handleSend() {
             const text = userInput.value.trim();
@@ -440,7 +442,6 @@
             userInput.style.height = '48px';
             sendBtn.disabled = true;
 
-            // Construction du contenu utilisateur (texte + images éventuelles)
             const hasImage = attachments.some(a => a.type === 'image');
             let userContent;
             let displayText = text;
@@ -474,22 +475,47 @@
             chatContainer.appendChild(aiMsg.wrapper);
             chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
 
-            try {
-                const response = await fetch(PROXY_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: hasImage ? VISION_MODEL : TEXT_MODEL,
-                        messages: [SYSTEM_PROMPT, ...chatHistory.slice(0, -1)],
-                        stream: true
-                    })
-                });
+            // On définit la liste des modèles à tester (si image -> vision, sinon pool de secours)
+            let modelsToTry = hasImage ? [VISION_MODEL] : TEXT_MODELS_POOL;
+            let response = null;
+            let success = false;
+            let finalActiveModel = modelsToTry[0];
 
-                if (!response.ok) {
-                    const errText = await response.text();
-                    throw new Error(`Proxy error ${response.status}: ${errText}`);
+            // Boucle magique : on teste les modèles un par un s'il y a une erreur 413 ou autre
+            for (let model of modelsToTry) {
+                try {
+                    // On ne garde que les 6 derniers messages pour ne pas exploser les tokens
+                    const limitedHistory = chatHistory.slice(0, -1).slice(-6);
+
+                    response = await fetch(PROXY_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model: model,
+                            messages: [SYSTEM_PROMPT, ...limitedHistory],
+                            stream: true
+                        })
+                    });
+
+                    if (response.ok) {
+                        success = true;
+                        finalActiveModel = model;
+                        break; // Ça fonctionne ! On sort de la boucle pour lire la réponse.
+                    } else {
+                        console.warn(`Le modèle ${model} a échoué (Status ${response.status}). Passage au suivant...`);
+                    }
+                } catch (e) {
+                    console.error(`Erreur réseau avec ${model}:`, e);
                 }
+            }
 
+            if (!success) {
+                aiMsg.contentNode.innerHTML = `<div class="text-red-400">Erreur : Tous les modèles d'IA gratuits ont échoué ou ont dépassé leurs limites. Attends 1 minute et réessaie.</div>`;
+                sendBtn.disabled = false;
+                return;
+            }
+
+            try {
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder("utf-8");
                 let fullText = "";
@@ -528,7 +554,7 @@
                 persistCurrentConversation();
 
             } catch (error) {
-                aiMsg.contentNode.innerHTML = `<div class="text-red-400">Erreur réseau : ${error.message}</div>`;
+                aiMsg.contentNode.innerHTML = `<div class="text-red-400">Erreur lors de la lecture des données : ${error.message}</div>`;
             }
 
             sendBtn.disabled = false;
