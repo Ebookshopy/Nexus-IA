@@ -93,7 +93,7 @@
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 
         /* --- Toasts --- */
-        .toast { background: #2f2f2f; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 0.85rem; box-shadow: 0 4px 14px rgba(0,0,0,0.35); opacity: 0; transform: translateY(10px); transition: all .25s ease; border-left: 3px solid #6b7280; max-width: 280px; }
+        .toast { background: #2f2f2f; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 0.85rem; box-shadow: 0 4px 14px rgba(0,0,0,0.35); opacity: 0; transform: translateY(10px); transition: all .25s ease; border-left: 3px solid #6b7280; max-width: 320px; }
         .toast.show { opacity: 1; transform: translateY(0); }
         .toast-success { border-left-color: #10a37f; }
         .toast-error { border-left-color: #ef4444; }
@@ -317,6 +317,7 @@
         // ==========================================
         const PROXY_URL = "https://nexus_ai--3f0c32d877a811f1bf981607ee4eb77e.web.val.run";
         const VISION_MODEL = "qwen/qwen3.6-27b";
+        const REQUEST_TIMEOUT_MS = 25000; // Délai max avant d'abandonner un modèle et de passer au suivant
 
         // Pool d'IA gratuites de secours (si la première sature, on passe à la suivante)
         const TEXT_MODELS_POOL = [
@@ -377,7 +378,7 @@ Règles fonctionnelles :
             setTimeout(() => {
                 toast.classList.remove('show');
                 setTimeout(() => toast.remove(), 300);
-            }, 2600);
+            }, 4200);
         }
 
         // ==========================================
@@ -1100,21 +1101,53 @@ Règles fonctionnelles :
             currentAbortController = new AbortController();
             const signal = currentAbortController.signal;
 
+            // Recueille la raison précise de chaque échec, pour pouvoir informer
+            // l'utilisateur au lieu d'un message générique qui masque le vrai problème.
+            const failureLog = [];
+
+            // Appelle fetch avec un timeout dédié à CE modèle : si un modèle reste bloqué
+            // (proxy endormi, requête qui ne répond jamais), on passe au suivant au lieu
+            // d'attendre indéfiniment — c'est ce qui provoquait l'impression de
+            // "génération infinie" côté utilisateur pendant que tout semblait bloqué.
+            function fetchWithTimeout(model) {
+                const timeoutController = new AbortController();
+                const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
+
+                // On combine le signal global (bouton stop / changement de discussion)
+                // avec le timeout local, sans dépendance à AbortSignal.any (peu supporté).
+                const onOuterAbort = () => timeoutController.abort();
+                signal.addEventListener('abort', onOuterAbort);
+
+                return fetch(PROXY_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    signal: timeoutController.signal,
+                    body: JSON.stringify({ model, messages: [SYSTEM_PROMPT, ...limitedHistory], stream: true })
+                }).finally(() => {
+                    clearTimeout(timeoutId);
+                    signal.removeEventListener('abort', onOuterAbort);
+                });
+            }
+
             // Essaie chaque modèle du pool l'un après l'autre ; renvoie null si tous échouent.
             async function attemptModels() {
                 for (const model of modelsToTry) {
                     try {
-                        const res = await fetch(PROXY_URL, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            signal,
-                            body: JSON.stringify({ model, messages: [SYSTEM_PROMPT, ...limitedHistory], stream: true })
-                        });
+                        const res = await fetchWithTimeout(model);
                         if (res.ok) return { response: res, model };
-                        console.warn(`Le modèle ${model} n'a pas répondu (statut ${res.status}). On essaie le suivant.`);
+
+                        let bodySnippet = '';
+                        try { bodySnippet = (await res.text()).slice(0, 200); } catch (_) {}
+                        const reason = `${model} → HTTP ${res.status}${bodySnippet ? ' : ' + bodySnippet : ''}`;
+                        console.warn('[Nexus] Échec modèle :', reason);
+                        failureLog.push(reason);
                     } catch (e) {
-                        if (e.name === 'AbortError') throw e;
-                        console.error(`Erreur réseau avec ${model} :`, e);
+                        if (signal.aborted) throw Object.assign(new Error('Aborted'), { name: 'AbortError' });
+                        const reason = e.name === 'AbortError'
+                            ? `${model} → délai dépassé (>${REQUEST_TIMEOUT_MS / 1000}s), le proxy ne répond pas`
+                            : `${model} → erreur réseau : ${e.message}`;
+                        console.error('[Nexus] Échec modèle :', reason, e);
+                        failureLog.push(reason);
                     }
                 }
                 return null;
@@ -1146,17 +1179,48 @@ Règles fonctionnelles :
             }
 
             if (!result) {
-                aiContentNode.innerHTML = "<div class=\"text-red-400\">Je suis désolé, aucun des modèles disponibles n'a pu répondre pour le moment. Merci de réessayer dans une minute.</div>";
+                // On affiche désormais la vraie cause (statut HTTP / timeout / erreur réseau)
+                // pour chaque modèle testé, au lieu d'un message générique qui ne dit rien.
+                console.error('[Nexus] Tous les modèles ont échoué :', failureLog);
+                const detail = failureLog.length
+                    ? failureLog.map(f => `• ${f}`).join('<br>')
+                    : 'Aucun détail disponible.';
+                aiContentNode.innerHTML = `
+                    <div class="text-red-400">
+                        Je suis désolé, aucun des modèles disponibles n'a pu répondre pour le moment.
+                        <div class="text-xs text-gray-500 mt-2 leading-relaxed">${detail}</div>
+                        <div class="text-xs text-gray-500 mt-2">Vérifie que le proxy (<code>${PROXY_URL}</code>) est bien actif, et regarde la console (F12) et l'onglet Réseau pour plus de détails.</div>
+                    </div>`;
                 chatHistory[aiIdx].content = "Désolé, aucun modèle n'a pu répondre pour le moment.";
                 persistCurrentConversation();
                 setGeneratingUI(false);
                 currentAbortController = null;
+                showToast('Échec de tous les modèles — voir la console (F12)', 'error');
                 return;
             }
 
             const { response, model: activeModel } = result;
 
             try {
+                if (!response.body) {
+                    // Certains proxys renvoient une réponse non-stream même quand stream:true
+                    // est demandé. Dans ce cas on bascule sur un parsing JSON classique
+                    // plutôt que d'échouer silencieusement sur getReader().
+                    const data = await response.json().catch(() => null);
+                    const text = data?.choices?.[0]?.message?.content || '';
+                    if (myToken !== generationToken) return;
+                    aiContentNode.innerHTML = marked.parse(text || '_Réponse vide._');
+                    addCopyButtons(aiContentNode);
+                    chatHistory[aiIdx].content = text;
+                    chatHistory[aiIdx].model = activeModel;
+                    persistCurrentConversation();
+                    refreshMessageActions(aiIdx);
+                    announce('Nexus a répondu.');
+                    setGeneratingUI(false);
+                    currentAbortController = null;
+                    return;
+                }
+
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder("utf-8");
                 let fullText = "";
@@ -1184,7 +1248,9 @@ Règles fonctionnelles :
                                     aiContentNode.innerHTML = marked.parse(fullText);
                                     autoScrollDuringStream();
                                 }
-                            } catch (e) {}
+                            } catch (e) {
+                                console.warn('[Nexus] Ligne SSE ignorée (JSON invalide) :', line, e);
+                            }
                         }
                     }
                 }
@@ -1200,8 +1266,11 @@ Règles fonctionnelles :
                 announce('Nexus a répondu.');
 
             } catch (error) {
+                console.error('[Nexus] Erreur pendant la lecture du flux :', error);
                 if (myToken === generationToken && error.name !== 'AbortError') {
                     aiContentNode.innerHTML = `<div class="text-red-400">Une erreur est survenue pendant la lecture de la réponse : ${error.message}. N'hésitez pas à réessayer.</div>`;
+                    chatHistory[aiIdx].content = `Erreur pendant la lecture de la réponse : ${error.message}`;
+                    persistCurrentConversation();
                 }
             }
 
