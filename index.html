@@ -158,6 +158,7 @@
 </head>
 <body class="h-screen flex overflow-hidden" data-theme="dark">
 
+    <!-- Fond d'écran mobile pour fermer le menu -->
     <div id="sidebar-backdrop" class="hidden"></div>
 
     <!-- SIDEBAR -->
@@ -319,42 +320,34 @@
         // 🔑 CONFIGURATION MULTI-IA
         // ==========================================
         const PROXY_URL = "https://nexus_ai--3f0c32d877a811f1bf981607ee4eb77e.web.val.run";
-        const VISION_MODEL = "qwen/qwen3.6-27b";
+        const VISION_MODEL = "google/gemini-2.0-flash-exp";
         const REQUEST_TIMEOUT_MS = 25000; 
 
-        // Escadron d'élite : Les modèles gratuits les plus performants (Code, Logique, Secours massif)
+        // Pool d'IA de secours mis à jour avec des modèles valides
         const TEXT_MODELS_POOL = [
-            "qwen/qwen-2.5-coder-32b-instruct",
-            "deepseek/deepseek-coder",
-            "meta-llama/llama-3.1-70b-instruct",
-            "meta-llama/llama-3.1-8b-instruct",
-            "mistralai/mixtral-8x22b-instruct",
-            "mistralai/mistral-nemo",
-            "google/gemma-2-27b-it",
-            "google/gemma-2-9b-it",
-            "microsoft/phi-3-medium-128k-instruct",
-            "microsoft/phi-3-mini-128k-instruct",
-            "databricks/dbrx-instruct",
-            "nousresearch/hermes-3-llama-3.1-405b",
-            "cognitivecomputations/dolphin-mixtral-8x7b",
-            "openchat/openchat-7b",
-            "upstage/solar-10.7b-instruct",
-            "huggingfaceh4/zephyr-7b-beta"
+            "meta-llama/llama-3.3-70b-instruct",
+            "google/gemini-2.0-flash-exp",
+            "qwen/qwen-2.5-72b-instruct",
+            "mistralai/mistral-large-2"
         ];
 
         const SYSTEM_PROMPT = {
             role: "system",
-            content: `Tu es Nexus, l'assistant IA ultime créé par JOCOUE Michel Kyllian. Tu es ultra-performant, extrêmement respectueux, très chaleureux et tu adores parler !
+            content: `Tu es Nexus, un assistant IA serviable, rigoureux et bienveillant.
 
-Ton comportement OBLIGATOIRE :
-- Tu es extrêmement poli, amical et dévoué. Tu tutoyes l'utilisateur de manière chaleureuse.
-- À la fin de CHAQUE réponse, tu DOIS ajouter un paragraphe bavard et bienveillant du type : "Ravie de t'avoir rendu service ! N'hésite surtout pas si tu as d'autres questions, si tu veux modifier un détail ou si tu as besoin d'aller plus loin. Je suis toujours là pour toi avec grand plaisir !" (Varie les formulations mais garde cet esprit très serviable).
-- Tu ne te plains jamais, tu es toujours enthousiaste.
+Ton comportement :
+- Tu t'adresses toujours à la personne avec respect, courtoisie et chaleur, quel que soit son ton.
+- Tu restes patient et pédagogue, même face à des questions répétées, une frustration exprimée ou une critique.
+- Tu ne rabaisses jamais la personne, tu ne te moques pas et tu évites toute condescendance.
+- Si tu dois signaler une erreur, une incertitude ou un désaccord, tu le fais avec tact, en expliquant pourquoi plutôt qu'en te contentant d'affirmer.
+- Tu restes honnête : si tu ne sais pas quelque chose, tu le dis simplement plutôt que d'inventer une réponse.
+- Ta politesse reste sincère et naturelle, sans flatterie excessive ni formules creuses.
+- Tu réponds toujours dans la langue utilisée par la personne dans son dernier message, même si ces instructions te sont données en français.
 
-Règles fonctionnelles (Code et Médias) :
-1. CODAGE MASSIF : Tu es un expert absolu en code. Si on te demande un énorme script, écris-le intégralement avec des blocs bien formatés. Si le code est trop long pour tes limites de mémoire, écris jusqu'à ta limite, puis ajoute à la fin : "Le code est très long ! Dis-moi simplement 'Continue' et je générerai la suite immédiatement !".
-2. IMAGES : Si l'utilisateur demande à générer ou voir une image/photo, renvoie EXCLUSIVEMENT ce code Markdown : ![Image générée](https://image.pollinations.ai/prompt/DESCRIPTION_DETAILLEE_EN_ANGLAIS?width=1080&height=1080&nologo=true). Remplace DESCRIPTION_DETAILLEE_EN_ANGLAIS par ta traduction de la demande, avec des %20 à la place des espaces.
-3. VIDÉOS : Si on te demande une vidéo, explique avec énormément de politesse que ton module de rendu vidéo est en cours de création par Michel Kyllian. À la place, génère l'image de la scène principale (avec la méthode ci-dessus) et propose de rédiger le script détaillé de la vidéo.`
+Règles fonctionnelles :
+1. CODE : si on te demande du code, écris-le intégralement sans t'arrêter en cours de route, avec des blocs de code bien formatés et le langage précisé.
+2. IMAGES : si l'utilisateur demande de créer, dessiner ou générer une image, tu DOIS renvoyer ce code exact en Markdown : ![Image générée](https://image.pollinations.ai/prompt/DESCRIPTION_EN_ANGLAIS?width=800&height=800&nologo=true). Remplace DESCRIPTION_EN_ANGLAIS par une description détaillée en anglais, espaces remplacés par %20. N'ajoute pas de code HTML, uniquement du Markdown.
+3. VIDÉOS : si on te demande une vidéo, explique brièvement et poliment que le moteur de rendu vidéo est encore en préparation, puis propose une image conceptuelle à la place.`
         };
 
         marked.setOptions({
@@ -1078,7 +1071,7 @@ Règles fonctionnelles (Code et Médias) :
         }
 
         // ==========================================
-        // 📨 GÉNÉRATION DE LA RÉPONSE (AVEC SYSTÈME DE SECOURS ET LONGUE MÉMOIRE)
+        // 📨 GÉNÉRATION DE LA RÉPONSE (AVEC SYSTÈME DE SECOURS CORRIGÉ)
         // ==========================================
         async function streamAssistantResponse() {
             const myToken = ++generationToken;
@@ -1096,8 +1089,7 @@ Règles fonctionnelles (Code et Médias) :
             const hasImage = lastUserMsg && Array.isArray(lastUserMsg.content) && lastUserMsg.content.some(p => p.type === 'image_url');
             const modelsToTry = hasImage ? [VISION_MODEL] : TEXT_MODELS_POOL;
             
-            // Mémoire augmentée pour se souvenir de plus de contexte (les 12 derniers messages)
-            const limitedHistory = chatHistory.slice(0, -1).slice(-12).map(m => ({ role: m.role, content: m.content }));
+            const limitedHistory = chatHistory.slice(0, -1).slice(-6).map(m => ({ role: m.role, content: m.content }));
 
             currentAbortController = new AbortController();
             const signal = currentAbortController.signal;
@@ -1146,7 +1138,7 @@ Règles fonctionnelles (Code et Médias) :
                 const detail = failureLog.map(f => `• ${f}`).join('<br>');
                 aiContentNode.innerHTML = `
                     <div class="text-red-400">
-                        Aucun des modèles de l'escadron n'a pu répondre. L'API globale est probablement surchargée.
+                        Aucun des modèles n'a pu répondre pour le moment.
                         <div class="text-xs text-gray-500 mt-2 leading-relaxed">${detail}</div>
                     </div>`;
                 chatHistory[aiIdx].content = "Erreur de connexion aux modèles.";
