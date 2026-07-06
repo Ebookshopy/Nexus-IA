@@ -2,7 +2,7 @@
 <html lang="fr" class="dark">
 <head>
     <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#171717">
@@ -60,7 +60,7 @@
         .copy-btn { background: transparent; color: #b4b4b4; border: none; font-size: 0.8rem; display: flex; align-items: center; gap: 5px; cursor: pointer; }
         .copy-btn:hover { color: #fff; }
 
-        /* --- Actions sous chaque message (toujours visibles, comme demandé) --- */
+        /* --- Actions sous chaque message --- */
         .msg-actions { opacity: 0.8; }
         .msg-actions button { background: transparent; border: none; color: #9ca3af; cursor: pointer; padding: 4px 7px; border-radius: 6px; font-size: 0.8rem; transition: background .15s, color .15s; }
         .msg-actions button:hover { color: #fff; background: rgba(255,255,255,0.08); opacity: 1; }
@@ -70,7 +70,7 @@
         .conv-actions { opacity: 0; transition: opacity 0.15s; }
         .conv-item:hover .conv-actions, .conv-item:focus-within .conv-actions { opacity: 1; }
 
-        /* --- Sidebar mobile (corrige le bug : plus moyen de la rouvrir) --- */
+        /* --- Sidebar mobile --- */
         #sidebar { transition: transform .28s ease; }
         @media (max-width: 767px) {
             #sidebar { position: fixed; top: 0; left: 0; bottom: 0; transform: translateX(-100%); z-index: 40; width: 280px; display: flex; box-shadow: 0 0 30px rgba(0,0,0,.5); }
@@ -158,7 +158,6 @@
 </head>
 <body class="h-screen flex overflow-hidden" data-theme="dark">
 
-    <!-- Fond d'écran mobile pour fermer le menu -->
     <div id="sidebar-backdrop" class="hidden"></div>
 
     <!-- SIDEBAR -->
@@ -194,6 +193,10 @@
             <button id="settings-btn" class="w-9 h-9 flex items-center justify-center rounded-md hover:bg-[#202123] text-gray-300 flex-shrink-0" title="Paramètres" aria-label="Paramètres">
                 <i class="fa-solid fa-gear"></i>
             </button>
+        </div>
+        
+        <div class="p-2 text-center text-[10px] text-gray-500 border-t border-gray-800">
+            Créé par JOCOUE Michel Kyllian
         </div>
     </aside>
 
@@ -317,33 +320,41 @@
         // ==========================================
         const PROXY_URL = "https://nexus_ai--3f0c32d877a811f1bf981607ee4eb77e.web.val.run";
         const VISION_MODEL = "qwen/qwen3.6-27b";
-        const REQUEST_TIMEOUT_MS = 25000; // Délai max avant d'abandonner un modèle et de passer au suivant
+        const REQUEST_TIMEOUT_MS = 25000; 
 
-        // Pool d'IA gratuites de secours (si la première sature, on passe à la suivante)
+        // Escadron d'élite : Les modèles gratuits les plus performants (Code, Logique, Secours massif)
         const TEXT_MODELS_POOL = [
-            "openai/gpt-oss-20b",               // Modèle 1 (Actuel)
-            "meta-llama/llama-3-70b-instruct",  // Modèle 2 (Gros quotas, excellent)
-            "mistralai/mixtral-8x7b-instruct",  // Modèle 3 (Très rapide et français)
-            "google/gemma-2-27b-it"             // Modèle 4 (De secours)
+            "qwen/qwen-2.5-coder-32b-instruct",
+            "deepseek/deepseek-coder",
+            "meta-llama/llama-3.1-70b-instruct",
+            "meta-llama/llama-3.1-8b-instruct",
+            "mistralai/mixtral-8x22b-instruct",
+            "mistralai/mistral-nemo",
+            "google/gemma-2-27b-it",
+            "google/gemma-2-9b-it",
+            "microsoft/phi-3-medium-128k-instruct",
+            "microsoft/phi-3-mini-128k-instruct",
+            "databricks/dbrx-instruct",
+            "nousresearch/hermes-3-llama-3.1-405b",
+            "cognitivecomputations/dolphin-mixtral-8x7b",
+            "openchat/openchat-7b",
+            "upstage/solar-10.7b-instruct",
+            "huggingfaceh4/zephyr-7b-beta"
         ];
 
         const SYSTEM_PROMPT = {
             role: "system",
-            content: `Tu es Nexus, un assistant IA serviable, rigoureux et bienveillant.
+            content: `Tu es Nexus, l'assistant IA ultime créé par JOCOUE Michel Kyllian. Tu es ultra-performant, extrêmement respectueux, très chaleureux et tu adores parler !
 
-Ton comportement :
-- Tu t'adresses toujours à la personne avec respect, courtoisie et chaleur, quel que soit son ton.
-- Tu restes patient et pédagogue, même face à des questions répétées, une frustration exprimée ou une critique.
-- Tu ne rabaisses jamais la personne, tu ne te moques pas et tu évites toute condescendance.
-- Si tu dois signaler une erreur, une incertitude ou un désaccord, tu le fais avec tact, en expliquant pourquoi plutôt qu'en te contentant d'affirmer.
-- Tu restes honnête : si tu ne sais pas quelque chose, tu le dis simplement plutôt que d'inventer une réponse.
-- Ta politesse reste sincère et naturelle, sans flatterie excessive ni formules creuses.
-- Tu réponds toujours dans la langue utilisée par la personne dans son dernier message, même si ces instructions te sont données en français.
+Ton comportement OBLIGATOIRE :
+- Tu es extrêmement poli, amical et dévoué. Tu tutoyes l'utilisateur de manière chaleureuse.
+- À la fin de CHAQUE réponse, tu DOIS ajouter un paragraphe bavard et bienveillant du type : "Ravie de t'avoir rendu service ! N'hésite surtout pas si tu as d'autres questions, si tu veux modifier un détail ou si tu as besoin d'aller plus loin. Je suis toujours là pour toi avec grand plaisir !" (Varie les formulations mais garde cet esprit très serviable).
+- Tu ne te plains jamais, tu es toujours enthousiaste.
 
-Règles fonctionnelles :
-1. CODE : si on te demande du code, écris-le intégralement sans t'arrêter en cours de route, avec des blocs de code bien formatés et le langage précisé.
-2. IMAGES : si l'utilisateur demande de créer, dessiner ou générer une image, tu DOIS renvoyer ce code exact en Markdown : ![Image générée](https://image.pollinations.ai/prompt/DESCRIPTION_EN_ANGLAIS?width=800&height=800&nologo=true). Remplace DESCRIPTION_EN_ANGLAIS par une description détaillée en anglais, espaces remplacés par %20. N'ajoute pas de code HTML, uniquement du Markdown.
-3. VIDÉOS : si on te demande une vidéo, explique brièvement et poliment que le moteur de rendu vidéo est encore en préparation, puis propose une image conceptuelle à la place.`
+Règles fonctionnelles (Code et Médias) :
+1. CODAGE MASSIF : Tu es un expert absolu en code. Si on te demande un énorme script, écris-le intégralement avec des blocs bien formatés. Si le code est trop long pour tes limites de mémoire, écris jusqu'à ta limite, puis ajoute à la fin : "Le code est très long ! Dis-moi simplement 'Continue' et je générerai la suite immédiatement !".
+2. IMAGES : Si l'utilisateur demande à générer ou voir une image/photo, renvoie EXCLUSIVEMENT ce code Markdown : ![Image générée](https://image.pollinations.ai/prompt/DESCRIPTION_DETAILLEE_EN_ANGLAIS?width=1080&height=1080&nologo=true). Remplace DESCRIPTION_DETAILLEE_EN_ANGLAIS par ta traduction de la demande, avec des %20 à la place des espaces.
+3. VIDÉOS : Si on te demande une vidéo, explique avec énormément de politesse que ton module de rendu vidéo est en cours de création par Michel Kyllian. À la place, génère l'image de la scène principale (avec la méthode ci-dessus) et propose de rédiger le script détaillé de la vidéo.`
         };
 
         marked.setOptions({
@@ -382,7 +393,7 @@ Règles fonctionnelles :
         }
 
         // ==========================================
-        // 🍔 SIDEBAR MOBILE (correction du bug de menu bloqué)
+        // 🍔 SIDEBAR MOBILE
         // ==========================================
         const sidebarEl = document.getElementById('sidebar');
         const sidebarBackdrop = document.getElementById('sidebar-backdrop');
@@ -461,8 +472,6 @@ Règles fonctionnelles :
         let speakingIdx = null;
         let generationToken = 0;
 
-        // Interrompt proprement toute génération ou lecture vocale en cours
-        // (utilisé lors d'un changement ou d'une suppression de discussion)
         function abortActiveGeneration() {
             generationToken++;
             if (currentAbortController) {
@@ -596,7 +605,6 @@ Règles fonctionnelles :
             if (window.innerWidth < 768) closeSidebar();
         }
 
-        // --- Brouillon : conserve le texte non envoyé propre à chaque discussion ---
         function draftKey() { return `nexus_draft_${currentConvId}`; }
         function saveDraft() {
             if (!currentConvId) return;
@@ -696,7 +704,6 @@ Règles fonctionnelles :
             });
         }
 
-        // --- Glisser-déposer sur la fenêtre principale ---
         const dropZone = document.querySelector('main');
         ['dragover'].forEach(evt => dropZone.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.add('drag-active'); }));
         ['dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.remove('drag-active'); }));
@@ -707,7 +714,6 @@ Règles fonctionnelles :
             showToast(`${files.length} fichier(s) ajouté(s)`, 'success');
         });
 
-        // --- Coller une image directement dans le champ de saisie ---
         userInput.addEventListener('paste', async (e) => {
             const items = e.clipboardData?.items || [];
             for (const item of items) {
@@ -882,7 +888,6 @@ Règles fonctionnelles :
                 metaRow.appendChild(modelTag);
             }
 
-            // Icône copier : présente sous CHAQUE question et réponse
             metaRow.appendChild(makeActionBtn('fa-regular fa-copy', 'Copier le message', () => {
                 navigator.clipboard.writeText(bubbleEl.innerText);
                 showToast('Message copié', 'success');
@@ -903,8 +908,6 @@ Règles fonctionnelles :
             return metaRow;
         }
 
-        // Reconstruit uniquement la barre d'actions d'un message existant
-        // (utilisé après la fin d'une génération, sans perturber le défilement)
         function refreshMessageActions(idx) {
             const wrapper = chatContainer.querySelector(`[data-index="${idx}"]`);
             if (!wrapper || !chatHistory[idx]) return;
@@ -1022,9 +1025,6 @@ Règles fonctionnelles :
             showToast('Message supprimé', 'success');
         }
 
-        // Régénère la réponse à l'index donné : supprime cette réponse et tout ce qui suit,
-        // puis relance une génération à partir du dernier message utilisateur restant.
-        // Appelée sans argument, elle régénère la toute dernière réponse (rétrocompatibilité).
         async function regenerateResponse(idx) {
             if (isGenerating) return;
             if (typeof idx !== 'number') {
@@ -1045,7 +1045,6 @@ Règles fonctionnelles :
         function isNearBottom() {
             return chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < 200;
         }
-        // Ne fait défiler automatiquement que si l'utilisateur n'a pas remonté pour relire
         function autoScrollDuringStream() {
             if (isNearBottom()) chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'auto' });
         }
@@ -1079,7 +1078,7 @@ Règles fonctionnelles :
         }
 
         // ==========================================
-        // 📨 GÉNÉRATION DE LA RÉPONSE (AVEC SYSTÈME DE SECOURS)
+        // 📨 GÉNÉRATION DE LA RÉPONSE (AVEC SYSTÈME DE SECOURS ET LONGUE MÉMOIRE)
         // ==========================================
         async function streamAssistantResponse() {
             const myToken = ++generationToken;
@@ -1096,28 +1095,18 @@ Règles fonctionnelles :
             const lastUserMsg = [...chatHistory].reverse().find(m => m.role === 'user');
             const hasImage = lastUserMsg && Array.isArray(lastUserMsg.content) && lastUserMsg.content.some(p => p.type === 'image_url');
             const modelsToTry = hasImage ? [VISION_MODEL] : TEXT_MODELS_POOL;
-            // L'API rejette tout champ en dehors de {role, content} (ex: 'ts', 'starred',
-            // 'model' — utilisés uniquement pour l'affichage interne). On les retire ici
-            // avant l'envoi, sinon chaque appel échoue avec une erreur 400.
-            const limitedHistory = chatHistory.slice(0, -1).slice(-6).map(m => ({ role: m.role, content: m.content }));
+            
+            // Mémoire augmentée pour se souvenir de plus de contexte (les 12 derniers messages)
+            const limitedHistory = chatHistory.slice(0, -1).slice(-12).map(m => ({ role: m.role, content: m.content }));
 
             currentAbortController = new AbortController();
             const signal = currentAbortController.signal;
-
-            // Recueille la raison précise de chaque échec, pour pouvoir informer
-            // l'utilisateur au lieu d'un message générique qui masque le vrai problème.
             const failureLog = [];
 
-            // Appelle fetch avec un timeout dédié à CE modèle : si un modèle reste bloqué
-            // (proxy endormi, requête qui ne répond jamais), on passe au suivant au lieu
-            // d'attendre indéfiniment — c'est ce qui provoquait l'impression de
-            // "génération infinie" côté utilisateur pendant que tout semblait bloqué.
             function fetchWithTimeout(model) {
                 const timeoutController = new AbortController();
                 const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
 
-                // On combine le signal global (bouton stop / changement de discussion)
-                // avec le timeout local, sans dépendance à AbortSignal.any (peu supporté).
                 const onOuterAbort = () => timeoutController.abort();
                 signal.addEventListener('abort', onOuterAbort);
 
@@ -1132,7 +1121,6 @@ Règles fonctionnelles :
                 });
             }
 
-            // Essaie chaque modèle du pool l'un après l'autre ; renvoie null si tous échouent.
             async function attemptModels() {
                 for (const model of modelsToTry) {
                     try {
@@ -1141,86 +1129,47 @@ Règles fonctionnelles :
 
                         let bodySnippet = '';
                         try { bodySnippet = (await res.text()).slice(0, 200); } catch (_) {}
-                        const reason = `${model} → HTTP ${res.status}${bodySnippet ? ' : ' + bodySnippet : ''}`;
-                        console.warn('[Nexus] Échec modèle :', reason);
-                        failureLog.push(reason);
+                        failureLog.push(`${model} → HTTP ${res.status} : ${bodySnippet}`);
                     } catch (e) {
                         if (signal.aborted) throw Object.assign(new Error('Aborted'), { name: 'AbortError' });
-                        const reason = e.name === 'AbortError'
-                            ? `${model} → délai dépassé (>${REQUEST_TIMEOUT_MS / 1000}s), le proxy ne répond pas`
-                            : `${model} → erreur réseau : ${e.message}`;
-                        console.error('[Nexus] Échec modèle :', reason, e);
-                        failureLog.push(reason);
+                        failureLog.push(`${model} → ${e.name === 'AbortError' ? 'Timeout' : e.message}`);
                     }
                 }
                 return null;
             }
 
-            let result = null;
-            let aborted = false;
-            try {
-                result = await attemptModels();
-                if (!result && myToken === generationToken) {
-                    showToast('Aucune réponse pour le moment, nouvelle tentative...', 'info');
-                    await new Promise(r => setTimeout(r, 2500));
-                    result = await attemptModels();
-                }
-            } catch (e) {
-                aborted = e.name === 'AbortError';
-            }
+            let result = await attemptModels();
 
-            // La discussion a changé pendant l'attente : on abandonne sans toucher au nouvel état.
             if (myToken !== generationToken) return;
 
-            if (aborted) {
-                aiContentNode.innerHTML = '<span class="text-gray-500 italic">Génération interrompue.</span>';
-                chatHistory[aiIdx].content = "_Génération interrompue par l'utilisateur._";
-                persistCurrentConversation();
-                setGeneratingUI(false);
-                currentAbortController = null;
-                return;
-            }
-
             if (!result) {
-                // On affiche désormais la vraie cause (statut HTTP / timeout / erreur réseau)
-                // pour chaque modèle testé, au lieu d'un message générique qui ne dit rien.
-                console.error('[Nexus] Tous les modèles ont échoué :', failureLog);
-                const detail = failureLog.length
-                    ? failureLog.map(f => `• ${f}`).join('<br>')
-                    : 'Aucun détail disponible.';
+                const detail = failureLog.map(f => `• ${f}`).join('<br>');
                 aiContentNode.innerHTML = `
                     <div class="text-red-400">
-                        Je suis désolé, aucun des modèles disponibles n'a pu répondre pour le moment.
+                        Aucun des modèles de l'escadron n'a pu répondre. L'API globale est probablement surchargée.
                         <div class="text-xs text-gray-500 mt-2 leading-relaxed">${detail}</div>
-                        <div class="text-xs text-gray-500 mt-2">Vérifie que le proxy (<code>${PROXY_URL}</code>) est bien actif, et regarde la console (F12) et l'onglet Réseau pour plus de détails.</div>
                     </div>`;
-                chatHistory[aiIdx].content = "Désolé, aucun modèle n'a pu répondre pour le moment.";
+                chatHistory[aiIdx].content = "Erreur de connexion aux modèles.";
                 persistCurrentConversation();
                 setGeneratingUI(false);
-                currentAbortController = null;
-                showToast('Échec de tous les modèles — voir la console (F12)', 'error');
                 return;
             }
 
             const { response, model: activeModel } = result;
 
             try {
-                if (!response.body) {
-                    // Certains proxys renvoient une réponse non-stream même quand stream:true
-                    // est demandé. Dans ce cas on bascule sur un parsing JSON classique
-                    // plutôt que d'échouer silencieusement sur getReader().
-                    const data = await response.json().catch(() => null);
-                    const text = data?.choices?.[0]?.message?.content || '';
-                    if (myToken !== generationToken) return;
-                    aiContentNode.innerHTML = marked.parse(text || '_Réponse vide._');
+                const contentType = response.headers.get('content-type') || '';
+                if (contentType.includes('application/json')) {
+                    const data = await response.json();
+                    const text = data?.choices?.[0]?.message?.content || data?.error?.message || JSON.stringify(data);
+                    
+                    aiContentNode.innerHTML = marked.parse(text);
                     addCopyButtons(aiContentNode);
                     chatHistory[aiIdx].content = text;
                     chatHistory[aiIdx].model = activeModel;
                     persistCurrentConversation();
                     refreshMessageActions(aiIdx);
-                    announce('Nexus a répondu.');
                     setGeneratingUI(false);
-                    currentAbortController = null;
                     return;
                 }
 
@@ -1228,7 +1177,6 @@ Règles fonctionnelles :
                 const decoder = new TextDecoder("utf-8");
                 let fullText = "";
                 let buffer = "";
-                let chunkCount = 0;
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -1239,20 +1187,18 @@ Règles fonctionnelles :
                     let lines = buffer.split('\n');
                     buffer = lines.pop();
 
-                    for (const line of lines) {
-                        if (line.trim() === '' || line.trim() === 'data: [DONE]') continue;
+                    for (let line of lines) {
+                        line = line.trim();
+                        if (line === '' || line === 'data: [DONE]') continue;
                         if (line.startsWith('data: ')) {
                             try {
                                 const parsed = JSON.parse(line.slice(6));
                                 const content = parsed.choices?.[0]?.delta?.content || "";
                                 fullText += content;
-                                chunkCount++;
-                                if (chunkCount % 15 === 0) {
-                                    aiContentNode.innerHTML = marked.parse(fullText);
-                                    autoScrollDuringStream();
-                                }
+                                aiContentNode.innerHTML = marked.parse(fullText);
+                                autoScrollDuringStream();
                             } catch (e) {
-                                console.warn('[Nexus] Ligne SSE ignorée (JSON invalide) :', line, e);
+                                // Ignorer les sauts transitoires
                             }
                         }
                     }
@@ -1266,21 +1212,15 @@ Règles fonctionnelles :
                 chatHistory[aiIdx].model = activeModel;
                 persistCurrentConversation();
                 refreshMessageActions(aiIdx);
-                announce('Nexus a répondu.');
 
             } catch (error) {
-                console.error('[Nexus] Erreur pendant la lecture du flux :', error);
-                if (myToken === generationToken && error.name !== 'AbortError') {
-                    aiContentNode.innerHTML = `<div class="text-red-400">Une erreur est survenue pendant la lecture de la réponse : ${error.message}. N'hésitez pas à réessayer.</div>`;
-                    chatHistory[aiIdx].content = `Erreur pendant la lecture de la réponse : ${error.message}`;
-                    persistCurrentConversation();
+                console.error(error);
+                aiContentNode.innerHTML = `<div class="text-red-400">Erreur lors de la lecture du flux : ${error.message}</div>`;
+            } finally {
+                if (myToken === generationToken) {
+                    setGeneratingUI(false);
+                    currentAbortController = null;
                 }
-            }
-
-            if (myToken === generationToken) {
-                setGeneratingUI(false);
-                currentAbortController = null;
-                autoScrollDuringStream();
             }
         }
 
